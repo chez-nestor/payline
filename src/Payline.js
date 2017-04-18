@@ -10,7 +10,9 @@ const MIN_AMOUNT = 100;
 const ACTIONS = {
     AUTHORIZATION: 100,
     PAYMENT: 101, // validation + payment
-    VALIDATION: 201
+    VALIDATION: 201,
+    REFUND: 421,
+    CREDIT: 422
 };
 
 // soap library has trouble loading element types
@@ -45,18 +47,18 @@ export default class Payline {
     initialize() {
         if (!this.initializationPromise) {
             this.initializationPromise = Promise.fromNode(callback => {
-                return soap.createClient(this.wsdl, {}, callback);
-            })
-            .then(client => {
-                client.setSecurity(new soap.BasicAuthSecurity(this.user, this.pass));
-                client.on('request', (xml) => {
-                    debug('REQUEST', xml);
+                    return soap.createClient(this.wsdl, {}, callback);
+                })
+                .then(client => {
+                    client.setSecurity(new soap.BasicAuthSecurity(this.user, this.pass));
+                    client.on('request', (xml) => {
+                        debug('REQUEST', xml);
+                    });
+                    client.on('response', (xml) => {
+                        debug('RESPONSE', xml);
+                    });
+                    return client;
                 });
-                client.on('response', (xml) => {
-                    debug('RESPONSE', xml);
-                });
-                return client;
-            });
         }
         return this.initializationPromise;
     }
@@ -74,9 +76,14 @@ export default class Payline {
             .then(client => Promise.fromNode(callback => {
                 client.createWallet(wallet, callback);
             }))
-            .spread(({ result, response }) => {
+            .spread(({
+                result,
+                response
+            }) => {
                 if (isSuccessful(result)) {
-                    return { walletId };
+                    return {
+                        walletId
+                    };
                 }
 
                 throw result;
@@ -99,7 +106,10 @@ export default class Payline {
                     walletId
                 }, callback);
             }))
-            .spread(({ result, wallet = null }, response) => {
+            .spread(({
+                result,
+                wallet = null
+            }, response) => {
                 if (isSuccessful(result)) {
                     return wallet;
                 }
@@ -131,9 +141,14 @@ export default class Payline {
             .then(client => Promise.fromNode(callback => {
                 client.doImmediateWalletPayment(body, callback);
             }))
-            .spread(({ result, transaction = null }) => {
+            .spread(({
+                result,
+                transaction = null
+            }) => {
                 if (isSuccessful(result)) {
-                    return { transactionId: transaction.id };
+                    return {
+                        transactionId: transaction.id
+                    };
                 }
 
                 throw result;
@@ -172,13 +187,16 @@ export default class Payline {
                     }
                 }, callback);
             }))
-            .spread(({ result, transaction = null }) => {
+            .spread(({
+                result,
+                transaction = null
+            }) => {
                 if (isSuccessful(result)) {
                     return Promise.fromNode(callback => client.doReset({
-                        transactionID: transaction.id,
-                        comment: 'Card validation cleanup'
-                    }, callback))
-                    .return(true);
+                            transactionID: transaction.id,
+                            comment: 'Card validation cleanup'
+                        }, callback))
+                        .return(true);
                 }
 
                 return false;
@@ -211,16 +229,62 @@ export default class Payline {
             }
         };
         return this.initialize()
-                .then(client => Promise.fromNode(callback => {
-                    client.doAuthorization(body, callback);
-                }))
-                .spread(({ result, transaction = null }) => {
-                    if (isSuccessful(result)) {
-                        return { transactionId: transaction.id };
-                    }
+            .then(client => Promise.fromNode(callback => {
+                client.doAuthorization(body, callback);
+            }))
+            .spread(({
+                result,
+                transaction = null
+            }) => {
+                if (isSuccessful(result)) {
+                    return {
+                        transactionId: transaction.id
+                    };
+                }
 
-                    throw result;
-                }, parseErrors);
+                throw result;
+            }, parseErrors);
+    }
+    doPurchase(reference, card, tryAmount, currency = CURRENCIES.EUR) {
+        const body = {
+            payment: {
+                attributes: ns('payment'),
+                amount: tryAmount,
+                currency,
+                action: ACTIONS.PAYMENT,
+                mode: 'CPT',
+                contractNumber: this.contractNumber
+            },
+            order: {
+                attributes: ns('order'),
+                ref: reference,
+                amount: tryAmount,
+                currency,
+                date: formatNow()
+            },
+            card: {
+                attributes: ns('card'),
+                number: card.number,
+                type: card.type,
+                expirationDate: card.expirationDate,
+                cvx: card.cvx
+            }
+        };
+        return this.initialize()
+            .then(client => Promise.fromNode(callback => {
+                client.doAuthorization(body, callback);
+            }))
+            .spread(({
+                result,
+                transaction = null
+            }) => {
+                if (isSuccessful(result)) {
+                    return {
+                        transactionId: transaction.id
+                    };
+                }
+                throw result;
+            }, parseErrors);
     }
 
     doCapture(transactionID, tryAmount, currency = CURRENCIES.EUR) {
@@ -239,9 +303,87 @@ export default class Payline {
             .then(client => Promise.fromNode(callback => {
                 client.doCapture(body, callback);
             }))
-            .spread(({ result, transaction = null }) => {
+            .spread(({
+                result,
+                transaction = null
+            }) => {
                 if (isSuccessful(result)) {
-                    return { transactionId: transaction.id };
+                    return {
+                        transactionId: transaction.id
+                    };
+                }
+
+                throw result;
+            }, parseErrors);
+    }
+
+    doRefund(transactionID, tryAmount, currency = CURRENCIES.EUR) {
+        const body = {
+            payment: {
+                attributes: ns('payment'),
+                amount: tryAmount,
+                currency,
+                action: ACTIONS.REFUND,
+                mode: 'CPT',
+                contractNumber: this.contractNumber
+            },
+            transactionID
+        };
+        return this.initialize()
+            .then(client => Promise.fromNode(callback => {
+                client.doRefund(body, callback);
+            }))
+            .spread(({
+                result,
+                transaction = null
+            }) => {
+                if (isSuccessful(result)) {
+                    return {
+                        transactionId: transaction.id
+                    };
+                }
+
+                throw result;
+            }, parseErrors);
+    }
+
+    doCredit(reference, card, tryAmount, currency = CURRENCIES.EUR) {
+        const body = {
+            payment: {
+                attributes: ns('payment'),
+                amount: tryAmount,
+                currency,
+                action: ACTIONS.CREDIT,
+                mode: 'CPT',
+                contractNumber: this.contractNumber
+            },
+            order: {
+                attributes: ns('order'),
+                ref: reference,
+                amount: tryAmount,
+                currency,
+                date: formatNow()
+            },
+            card: {
+                attributes: ns('card'),
+                number: card.number,
+                type: card.type,
+                expirationDate: card.expirationDate,
+                cvx: card.cvx
+            }
+        };
+        return this.initialize()
+            .then(client => Promise.fromNode(callback => {
+                client.doCredit(body, callback);
+            }))
+            .spread(({
+                result,
+                transaction = null
+            }) => {
+                if (isSuccessful(result)) {
+                    return {
+                        transactionId: transaction.id
+                    };
                 }
 
                 throw result;
@@ -291,10 +433,14 @@ Payline.CURRENCIES = CURRENCIES;
 function parseErrors(error) {
     const response = error.response;
     if (response.statusCode === 401) {
-        return Promise.reject({ shortMessage: 'Wrong API credentials' });
+        return Promise.reject({
+            shortMessage: 'Wrong API credentials'
+        });
     }
 
-    return Promise.reject({ shortMessage: 'Wrong API call' });
+    return Promise.reject({
+        shortMessage: 'Wrong API call'
+    });
 }
 
 function generateId() {
