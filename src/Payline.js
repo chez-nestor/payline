@@ -211,7 +211,7 @@ export default class Payline {
                 currency,
                 action: ACTIONS.AUTHORIZATION,
                 mode: 'CPT',
-                contractNumber: this.contractNumber
+                contractNumber: this.contractNumber,
             },
             order: {
                 attributes: ns('order'),
@@ -225,7 +225,8 @@ export default class Payline {
                 number: card.number,
                 type: card.type,
                 expirationDate: card.expirationDate,
-                cvx: card.cvx
+                cvx: card.cvx,
+                cardholder: card.cardholder
             }
         };
         return this.initialize()
@@ -267,7 +268,8 @@ export default class Payline {
                 number: card.number,
                 type: card.type,
                 expirationDate: card.expirationDate,
-                cvx: card.cvx
+                cvx: card.cvx,
+                cardholder: card.cardholder
             }
         };
         return this.initialize()
