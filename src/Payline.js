@@ -47,8 +47,8 @@ export default class Payline {
     initialize() {
         if (!this.initializationPromise) {
             this.initializationPromise = Promise.fromNode(callback => {
-                    return soap.createClient(this.wsdl, {}, callback);
-                })
+                return soap.createClient(this.wsdl, {}, callback);
+            })
                 .then(client => {
                     client.setSecurity(new soap.BasicAuthSecurity(this.user, this.pass));
                     client.on('request', (xml) => {
@@ -193,9 +193,9 @@ export default class Payline {
             }) => {
                 if (isSuccessful(result)) {
                     return Promise.fromNode(callback => client.doReset({
-                            transactionID: transaction.id,
-                            comment: 'Card validation cleanup'
-                        }, callback))
+                        transactionID: transaction.id,
+                        comment: 'Card validation cleanup'
+                    }, callback))
                         .return(true);
                 }
 
@@ -211,7 +211,7 @@ export default class Payline {
                 currency,
                 action: ACTIONS.AUTHORIZATION,
                 mode: 'CPT',
-                contractNumber: this.contractNumber,
+                contractNumber: this.contractNumber
             },
             order: {
                 attributes: ns('order'),
@@ -226,7 +226,7 @@ export default class Payline {
                 type: card.type,
                 expirationDate: card.expirationDate,
                 cvx: card.cvx,
-                cardholder: card.cardholder
+                holder: card.cardholder,
             }
         };
         return this.initialize()
@@ -269,7 +269,7 @@ export default class Payline {
                 type: card.type,
                 expirationDate: card.expirationDate,
                 cvx: card.cvx,
-                cardholder: card.cardholder
+                holder: card.cardholder
             }
         };
         return this.initialize()
@@ -371,7 +371,8 @@ export default class Payline {
                 number: card.number,
                 type: card.type,
                 expirationDate: card.expirationDate,
-                cvx: card.cvx
+                cvx: card.cvx,
+                holder: card.cardholder
             }
         };
         return this.initialize()
